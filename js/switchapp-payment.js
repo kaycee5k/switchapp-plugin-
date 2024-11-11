@@ -1,13 +1,57 @@
 document.addEventListener('DOMContentLoaded', function () {
     const ticketCategory = document.getElementById('ticket-category');
+    const ticketQuantity = document.getElementById('ticket-quantity');
     const ticketAmountField = document.getElementById('ticket-amount');
+    const remainingTicketsDisplay = document.createElement('div'); // Element to show remaining tickets
+    remainingTicketsDisplay.style.color = 'red';
+    ticketCategory.parentNode.insertBefore(remainingTicketsDisplay, ticketCategory.nextSibling);
 
-    if (ticketCategory && ticketAmountField) {
-        ticketCategory.addEventListener('change', function () {
-            const selectedOption = this.options[this.selectedIndex];
-            const price = selectedOption.getAttribute('data-price');
-            ticketAmountField.value = price ? parseFloat(price) : '';
+    // Update total amount based on ticket price and quantity
+    function updateTotalAmount() {
+        const selectedOption = ticketCategory.options[ticketCategory.selectedIndex];
+        const price = selectedOption ? parseFloat(selectedOption.getAttribute('data-price')) : 0;
+        const quantity = parseInt(ticketQuantity.value) || 1;
+        ticketAmountField.value = price * quantity;
+
+        // Check remaining tickets for the selected ticket type
+        fetchRemainingTickets(ticketCategory.value);
+    }
+
+    // Fetch remaining tickets for the selected type
+    function fetchRemainingTickets(ticketType) {
+        jQuery.ajax({
+            url: switchappConfig.ajaxUrl,
+            method: "POST",
+            data: {
+                action: "get_remaining_tickets",
+                security: switchappConfig.nonce,
+                ticket_type: ticketType,
+            },
+            success: function(response) {
+                if (response.success && response.data.remaining_tickets !== null) {
+                    remainingTicketsDisplay.innerHTML = `Only ${response.data.remaining_tickets} tickets left for ${ticketType}!`;
+                } else {
+                    remainingTicketsDisplay.innerHTML = ''; // Hide if more than 10 tickets remain
+                }
+            },
+            error: function(err) {
+                console.error("Error fetching remaining tickets:", err);
+            }
         });
+    }
+
+    // Initialize total amount and remaining tickets on page load
+    if (ticketCategory && ticketQuantity && ticketAmountField) {
+        ticketCategory.addEventListener('change', updateTotalAmount);
+        ticketQuantity.addEventListener('change', updateTotalAmount);
+        updateTotalAmount(); // Initial calculation
+    }
+    // Update total amount based on ticket price and quantity
+    function updateTotalAmount() {
+        const selectedOption = ticketCategory.options[ticketCategory.selectedIndex];
+        const price = selectedOption ? parseFloat(selectedOption.getAttribute('data-price')) : 0;
+        const quantity = parseInt(ticketQuantity.value) || 1;
+        ticketAmountField.value = price * quantity;
     }
 
     const payNowButton = document.getElementById('pay-now-button');
@@ -19,30 +63,31 @@ document.addEventListener('DOMContentLoaded', function () {
             const organization = document.getElementById('switchapp-organization').value;
             const amount = parseFloat(ticketAmountField.value);
             const ticketType = ticketCategory.value;
+            const quantity = parseInt(ticketQuantity.value);
 
+            // Validate inputs
             if (isNaN(amount) || amount <= 0) {
-                alert("Invalid amount. Please select a valid ticket category.");
+                alert("Invalid amount. Please select a valid ticket category and quantity.");
                 return;
             }
-
             if (!switchappConfig || !switchappConfig.publicKey) {
                 alert("Payment configuration error. Please contact support.");
                 return;
             }
 
+            // Initialize payment
             const switchappClient = new SwitchAppCheckout({ publicApiKey: switchappConfig.publicKey });
-
             const paymentDetails = {
                 country: "NG",
                 currency: "NGN",
                 amount: amount,
                 customer: { full_name: fullName, email, phone },
-                metadata: { organization, ticket_type: ticketType },
+                metadata: { organization, ticket_type: ticketType, quantity },
                 title: "Event Ticket Purchase",
-                description: `Ticket purchase for ${ticketType}`,
+                description: `Ticket purchase for ${ticketType} - ${quantity} tickets`,
                 onClose: () => alert("Payment was canceled or closed."),
                 onSuccess: () => {
-                    // Only send data after successful payment
+                    // AJAX request to save payment details after successful payment
                     jQuery.ajax({
                         url: switchappConfig.ajaxUrl,
                         method: "POST",
@@ -56,11 +101,13 @@ document.addEventListener('DOMContentLoaded', function () {
                             organization: organization,
                             amount: amount,
                             ticket_type: ticketType,
+                            quantity: quantity,
                         },
                         success: function(response) {
                             if (response.success) {
                                 alert("Payment details saved successfully!");
                             } else {
+                                alert(response.data || "Failed to save payment details.");
                                 console.error("Failed to save payment details:", response.data);
                             }
                         },
@@ -73,7 +120,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
             switchappClient.showCheckoutModal(paymentDetails)
                 .then(() => console.log("Payment initialized successfully"))
-                .catch(err => console.error("Failed to initialize payment", err));
+                .catch(err => {
+                    console.error("Failed to initialize payment", err);
+                    alert("Failed to initialize payment. Check the console for details.");
+                });
         });
     }
 });

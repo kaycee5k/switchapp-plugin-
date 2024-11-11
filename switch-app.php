@@ -3,7 +3,7 @@
 Plugin Name: SwitchApp Payment Gateway
 Plugin URI: https://example.com
 Description: A standalone WordPress plugin to integrate SwitchApp Payment API for event ticket payments with client-side payment using the public keys.
-Version: 1.7.1
+Version: 1.7.2
 Author: Kaycee Onyia
 Author URI: https://example.com
 */
@@ -66,15 +66,25 @@ function switchapp_payment_gateway_register_settings() {
     register_setting('switchapp_payment_gateway_options_group', 'switchapp_payment_gateway_test_mode');
     register_setting('switchapp_payment_gateway_options_group', 'switchapp_payment_gateway_test_public_key');
     register_setting('switchapp_payment_gateway_options_group', 'switchapp_payment_gateway_live_public_key');
+    
+    register_setting('switchapp_payment_gateway_options_group', 'switchapp_ticket_limit_student');
+    register_setting('switchapp_payment_gateway_options_group', 'switchapp_ticket_limit_regular');
+    register_setting('switchapp_payment_gateway_options_group', 'switchapp_ticket_limit_vip');
 
     add_settings_section('switchapp_payment_gateway_main', 'Main Settings', null, 'switchapp_payment_gateway');
 
     add_settings_field('switchapp_payment_gateway_test_mode', 'Enable Test Mode', 'switchapp_payment_gateway_test_mode_callback', 'switchapp_payment_gateway', 'switchapp_payment_gateway_main');
     add_settings_field('switchapp_payment_gateway_test_public_key', 'Test Public Key', 'switchapp_payment_gateway_test_public_key_callback', 'switchapp_payment_gateway', 'switchapp_payment_gateway_main');
     add_settings_field('switchapp_payment_gateway_live_public_key', 'Live Public Key', 'switchapp_payment_gateway_live_public_key_callback', 'switchapp_payment_gateway', 'switchapp_payment_gateway_main');
+
+    // Ticket Limits
+    add_settings_field('switchapp_ticket_limit_student', 'Student Ticket Limit', 'switchapp_ticket_limit_student_callback', 'switchapp_payment_gateway', 'switchapp_payment_gateway_main');
+    add_settings_field('switchapp_ticket_limit_regular', 'Regular Ticket Limit', 'switchapp_ticket_limit_regular_callback', 'switchapp_payment_gateway', 'switchapp_payment_gateway_main');
+    add_settings_field('switchapp_ticket_limit_vip', 'VIP Ticket Limit', 'switchapp_ticket_limit_vip_callback', 'switchapp_payment_gateway', 'switchapp_payment_gateway_main');
 }
 add_action('admin_init', 'switchapp_payment_gateway_register_settings');
 
+// Callback functions for setting fields
 function switchapp_payment_gateway_test_mode_callback() {
     $test_mode = get_option('switchapp_payment_gateway_test_mode', 'no');
     echo '<input type="checkbox" name="switchapp_payment_gateway_test_mode" value="yes" ' . checked($test_mode, 'yes', false) . '> Enable Test Mode';
@@ -88,6 +98,22 @@ function switchapp_payment_gateway_test_public_key_callback() {
 function switchapp_payment_gateway_live_public_key_callback() {
     $public_key = esc_attr(get_option('switchapp_payment_gateway_live_public_key'));
     echo '<input type="text" name="switchapp_payment_gateway_live_public_key" value="' . $public_key . '" />';
+}
+
+// Ticket Limit Fields
+function switchapp_ticket_limit_student_callback() {
+    $limit = get_option('switchapp_ticket_limit_student', 200);
+    echo '<input type="number" name="switchapp_ticket_limit_student" value="' . esc_attr($limit) . '" min="1">';
+}
+
+function switchapp_ticket_limit_regular_callback() {
+    $limit = get_option('switchapp_ticket_limit_regular', 300);
+    echo '<input type="number" name="switchapp_ticket_limit_regular" value="' . esc_attr($limit) . '" min="1">';
+}
+
+function switchapp_ticket_limit_vip_callback() {
+    $limit = get_option('switchapp_ticket_limit_vip', 50);
+    echo '<input type="number" name="switchapp_ticket_limit_vip" value="' . esc_attr($limit) . '" min="1">';
 }
 
 // Payment Form Shortcode
@@ -120,12 +146,17 @@ function switchapp_payment_gateway_payment_form_shortcode() {
             <option value="student" data-price="5000">Student - N5,000</option>
             <option value="regular" data-price="10000">Regular - N10,000</option>
             <option value="vip" data-price="20000">VIP - N20,000</option>
-            <option value="test" data-price="1000">Test - N1,000</option>
-            <option value="test" data-price="3000">Test - N3,000</option>
         </select><br>
 
-        <label for="amount">Amount:</label>
+        <label for="ticket-quantity">Number of Tickets:</label>
+        <select id="ticket-quantity" name="ticket_quantity" required>
+            <?php for ($i = 1; $i <= 10; $i++) echo "<option value='$i'>$i</option>"; ?>
+        </select><br>
+
+        <label for="amount">Total Amount:</label>
         <input type="text" id="ticket-amount" value="5000" readonly><br>
+        
+        <div id="remaining-tickets" style="color:red; display:none;"></div>
         
         <button type="button" id="pay-now-button">Pay Now</button>
     </form>
@@ -150,6 +181,7 @@ function switchapp_create_payments_table() {
         organization varchar(100),
         amount decimal(10,2) NOT NULL,
         ticket_type varchar(50) NOT NULL,
+        quantity smallint NOT NULL,
         created_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
         PRIMARY KEY (id)
     ) $charset_collate;";
@@ -165,9 +197,26 @@ add_action('wp_ajax_nopriv_save_payment_details', 'switchapp_save_payment_detail
 function switchapp_save_payment_details() {
     check_ajax_referer('switchapp_nonce', 'security');
 
+    $ticket_type = sanitize_text_field($_POST['ticket_type']);
+    $quantity = intval($_POST['quantity']);
+    
+    // Get ticket limit for selected type
+    $limit_option = 'switchapp_ticket_limit_' . strtolower($ticket_type);
+    $ticket_limit = get_option($limit_option, 100);
+
     global $wpdb;
     $table_name = $wpdb->prefix . 'switchapp_payments';
 
+    // Calculate tickets sold
+    $tickets_sold = $wpdb->get_var($wpdb->prepare("SELECT SUM(quantity) FROM $table_name WHERE ticket_type = %s", $ticket_type));
+    $remaining_tickets = $ticket_limit - $tickets_sold;
+
+    if ($remaining_tickets < $quantity) {
+        wp_send_json_error('Not enough tickets available for this type.');
+        wp_die();
+    }
+
+    // Save purchase details
     $data = array(
         'first_name' => sanitize_text_field($_POST['first_name']),
         'last_name' => sanitize_text_field($_POST['last_name']),
@@ -175,7 +224,8 @@ function switchapp_save_payment_details() {
         'phone' => sanitize_text_field($_POST['phone']),
         'organization' => sanitize_text_field($_POST['organization']),
         'amount' => floatval($_POST['amount']),
-        'ticket_type' => sanitize_text_field($_POST['ticket_type']),
+        'ticket_type' => $ticket_type,
+        'quantity' => $quantity,
         'created_at' => current_time('mysql'),
     );
 
@@ -185,6 +235,31 @@ function switchapp_save_payment_details() {
         wp_send_json_success('Payment details saved successfully.');
     } else {
         wp_send_json_error('Failed to save payment details.');
+    }
+
+    wp_die();
+}
+
+// AJAX to get remaining tickets for a specific type
+add_action('wp_ajax_get_remaining_tickets', 'switchapp_get_remaining_tickets');
+add_action('wp_ajax_nopriv_get_remaining_tickets', 'switchapp_get_remaining_tickets');
+
+function switchapp_get_remaining_tickets() {
+    check_ajax_referer('switchapp_nonce', 'security');
+
+    $ticket_type = sanitize_text_field($_POST['ticket_type']);
+    $limit_option = 'switchapp_ticket_limit_' . strtolower($ticket_type);
+    $ticket_limit = get_option($limit_option, 100);
+
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'switchapp_payments';
+    $tickets_sold = $wpdb->get_var($wpdb->prepare("SELECT SUM(quantity) FROM $table_name WHERE ticket_type = %s", $ticket_type));
+    $remaining_tickets = $ticket_limit - $tickets_sold;
+
+    if ($remaining_tickets <= 10) {
+        wp_send_json_success(array('remaining_tickets' => $remaining_tickets));
+    } else {
+        wp_send_json_success(array('remaining_tickets' => null));
     }
 
     wp_die();
