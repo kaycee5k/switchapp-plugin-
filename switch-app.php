@@ -148,10 +148,14 @@ function switchapp_payment_gateway_payment_form_shortcode() {
             <option value="vip" data-price="20000">VIP - N20,000</option>
         </select><br>
 
-        <label for="ticket-quantity">Number of Tickets:</label>
-        <select id="ticket-quantity" name="ticket_quantity" required>
-            <?php for ($i = 1; $i <= 10; $i++) echo "<option value='$i'>$i</option>"; ?>
-        </select><br>
+        <label for="quantity">Number of Tickets:</label>
+        <br>
+        <div class="quantity-container">
+            <button type="button" id="quantity-decrease" class="decrease-btn">-</button>
+            <input type="text" id="ticket-quantity" name="ticket_quantity" value="1" readonly>
+            <button type="button" id="quantity-increase" class="increase-btn">+</button>
+        </div>
+        <br>
 
         <label for="amount">Total Amount:</label>
         <input type="text" id="ticket-amount" value="5000" readonly><br>

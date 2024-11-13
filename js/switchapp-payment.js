@@ -2,6 +2,8 @@ document.addEventListener('DOMContentLoaded', function () {
     const ticketCategory = document.getElementById('ticket-category');
     const ticketQuantity = document.getElementById('ticket-quantity');
     const ticketAmountField = document.getElementById('ticket-amount');
+    const quantityIncreaseButton = document.getElementById('quantity-increase');
+    const quantityDecreaseButton = document.getElementById('quantity-decrease');
     const remainingTicketsDisplay = document.createElement('div'); // Element to show remaining tickets
     remainingTicketsDisplay.style.color = 'red';
     ticketCategory.parentNode.insertBefore(remainingTicketsDisplay, ticketCategory.nextSibling);
@@ -16,6 +18,21 @@ document.addEventListener('DOMContentLoaded', function () {
         // Check remaining tickets for the selected ticket type
         fetchRemainingTickets(ticketCategory.value);
     }
+
+    // Event listeners for quantity controls
+    quantityIncreaseButton.addEventListener('click', function () {
+        let quantity = parseInt(ticketQuantity.value);
+        ticketQuantity.value = quantity + 1;
+        updateTotalAmount();
+    });
+
+    quantityDecreaseButton.addEventListener('click', function () {
+        let quantity = parseInt(ticketQuantity.value);
+        if (quantity > 1) {  // Ensure quantity doesn’t go below 1
+            ticketQuantity.value = quantity - 1;
+            updateTotalAmount();
+        }
+    });
 
     // Fetch remaining tickets for the selected type
     function fetchRemainingTickets(ticketType) {
@@ -43,15 +60,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // Initialize total amount and remaining tickets on page load
     if (ticketCategory && ticketQuantity && ticketAmountField) {
         ticketCategory.addEventListener('change', updateTotalAmount);
-        ticketQuantity.addEventListener('change', updateTotalAmount);
         updateTotalAmount(); // Initial calculation
-    }
-    // Update total amount based on ticket price and quantity
-    function updateTotalAmount() {
-        const selectedOption = ticketCategory.options[ticketCategory.selectedIndex];
-        const price = selectedOption ? parseFloat(selectedOption.getAttribute('data-price')) : 0;
-        const quantity = parseInt(ticketQuantity.value) || 1;
-        ticketAmountField.value = price * quantity;
     }
 
     const payNowButton = document.getElementById('pay-now-button');

@@ -20,6 +20,50 @@ select {
     outline: none;
     width: 100%;
 }
+
+/* increase and decrease button */
+.quantity-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+#quantity-decrease, #quantity-increase {
+    width: 40px;
+    height: 40px;
+    font-size: 20px;
+    font-weight: bold;
+    text-align: center;
+    border: 2px solid #ccc;
+    background-color: transparent;
+    color: #ccc;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+}
+
+#quantity-decrease:hover, #quantity-increase:hover {
+    border-color: #fff;
+    color: #fff;
+    background-color: #636161;
+}
+
+#ticket-quantity {
+    width: 50px;
+    height: 40px;
+    text-align: center;
+    font-size: 18px;
+    border: none;
+    background-color: transparent;
+    color: #ccc;
+    font-weight: bold;
+}
+
+
+
 /* Style for Pay Now button */
 #pay-now-button {
     padding: 12px 24px;
